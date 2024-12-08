@@ -1,10 +1,9 @@
-import random
-
-import polars as pl
-import numpy as np
-import seaborn as sns
-from sklearn.model_selection import train_test_split
 import math
+import time
+
+import numpy as np
+import polars as pl
+from sklearn.model_selection import train_test_split
 
 
 class FunkSVDModelResult:
@@ -21,9 +20,6 @@ class FunkSVDModelResult:
 
     def predict_rating(self, user_id, item_id):
         return round(self.global_mean + self.users_bias[user_id] + self.items_bias[item_id] + np.dot(self.P_matrix[user_id], self.Q_matrix[item_id]), 2)
-
-
-
 
 
 class FunkSVD:
@@ -78,11 +74,11 @@ class FunkSVD:
                     self.Q_matrix[item, factor] = self.Q_matrix[item, factor] + self.learning_rate * (error_ui * temp_uf - self.regulation * self.Q_matrix[item, factor])
             _rmse_train_errors[n_iteration] = math.sqrt(sq_error / rating_n_rows)  # RMSE
 
-        self.rmse_train_errors = pl.DataFrame(np.array([_rmse_train_errors, list(range(1, self.iterations+1))]), schema=[("error", pl.Float64), ("iteration", pl.Int64)], orient="col")
+        self.rmse_train_errors = pl.DataFrame(np.array([_rmse_train_errors, list(range(1, self.iterations + 1))]), schema=[("error", pl.Float64), ("iteration", pl.Int64)], orient="col")
+        self.rmse_train_errors.write_csv('./_rmse_train_errors.csv')
 
     def predict_rating(self, user_id, item_id):
-        return round(self.global_mean + self.users_bias[user_id-1] + self.items_bias[item_id-1] + np.dot(self.P_matrix[user_id-1], self.Q_matrix[item_id-1]), 2)
-
+        return round(self.global_mean + self.users_bias[user_id - 1] + self.items_bias[item_id - 1] + np.dot(self.P_matrix[user_id - 1], self.Q_matrix[item_id - 1]), 2)
 
     def evaluate(self, X_user_item, y_rating):
         rating_n_rows = X_user_item.shape[0]
@@ -104,13 +100,24 @@ if __name__ == '__main__':
     df_ratings = pl.read_csv('./ratings.csv')
     df_ratings = df_ratings.drop('timestamp')
     df_ratings = df_ratings.sort('userId')
-    df_ratings = df_ratings[:100]  # TODO: REMOVER!
+    # df_ratings = df_ratings[:100]  # TODO: REMOVER!
 
     X = df_ratings.select(['userId', 'movieId'])
     y = df_ratings.select('rating')
     X_train, X_test, y_train, y_test = train_test_split(X, y)
 
     model = FunkSVD()
+
+    print(f'INICIANDO TREINAMENTO...')
+    start_trainning = time.time()
     model.fit(X_train, y_train)
+    print(f'FINALIZANDO TREINAMENTO...')
+    end_trainning = time.time()
+
+    print(f'INICIANDO VALIDAÇÃO...')
+    start_evaluation = time.time()
     model.evaluate(X_test, y_test)
+    print(f'FINALIZANDO VALIDAÇÃO...')
+    end_evaluation = time.time()
+
     print(model.rmse_test_error)
