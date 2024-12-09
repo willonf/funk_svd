@@ -19,8 +19,14 @@ class FunkSVD:
         self.items_bias = None
         self.P_matrix = None
         self.Q_matrix = None
+
+        # RMSE
         self.rmse_train_errors = None
         self.rmse_test_error = None
+
+        # MAE
+        self.mae_train_errors = None
+        self.mae_test_error = None
 
     def fit(self, X_user_item, y_rating):
         rating_n_rows = y_rating.shape[0]
@@ -37,10 +43,12 @@ class FunkSVD:
         self.Q_matrix = np.full(shape=(n_items, self.k), fill_value=0.1, dtype=np.float64)
 
         _rmse_train_errors = np.zeros(shape=self.iterations)
+        _mae_train_errors = np.zeros(shape=self.iterations)
 
         for n_iteration in range(self.iterations):
             print(f'TRAINING - ITERAÇÃO: {n_iteration}')
             sq_error = 0
+            mae_error = 0
             for r_matrix_row in range(rating_n_rows):
 
                 user = X_user_item[r_matrix_row].select('userId').rows()[0][0] - 1
@@ -50,6 +58,7 @@ class FunkSVD:
                 pred_r = self.global_mean + self.users_bias[user] + self.items_bias[item] + np.dot(self.P_matrix[user], self.Q_matrix[item])
                 error_ui = real_r - pred_r
                 sq_error = sq_error + error_ui ** 2
+                mae_error = mae_error + abs(error_ui)
 
                 self.users_bias[user] = self.users_bias[user] + self.learning_rate * (error_ui - self.regulation * self.users_bias[user])
                 self.items_bias[item] = self.items_bias[item] + self.learning_rate * (error_ui - self.regulation * self.items_bias[item])
@@ -59,10 +68,14 @@ class FunkSVD:
                     self.P_matrix[user, factor] = self.P_matrix[user, factor] + self.learning_rate * (error_ui * self.Q_matrix[item, factor] - self.regulation * self.P_matrix[user, factor])
                     self.Q_matrix[item, factor] = self.Q_matrix[item, factor] + self.learning_rate * (error_ui * temp_uf - self.regulation * self.Q_matrix[item, factor])
             _rmse_train_errors[n_iteration] = round_(math.sqrt(sq_error / rating_n_rows), 2)  # RMSE
-            print(f'TRAINING - RMSE: {math.sqrt(sq_error / rating_n_rows)}')
+            _mae_train_errors[n_iteration] = round_(sq_error / rating_n_rows, 2)  # MAE
+            print(f'TRAINING - RMSE: {round_(math.sqrt(sq_error / rating_n_rows), 2)} - MAE: {round_(sq_error / rating_n_rows, 2)}')
 
-        self.rmse_train_errors = pl.DataFrame(np.array([_rmse_train_errors, list(range(1, self.iterations + 1))]), schema=[("error", pl.Float64), ("iteration", pl.Int64)], orient="col")
+        self.rmse_train_errors = pl.DataFrame(np.array([_rmse_train_errors, list(range(1, self.iterations + 1))]), schema=[("rmse", pl.Float64), ("iteration", pl.Int64)], orient="col")
+        self.mae_train_errors = pl.DataFrame(np.array([_mae_train_errors, list(range(1, self.iterations + 1))]), schema=[("mae", pl.Float64), ("iteration", pl.Int64)], orient="col")
+
         self.rmse_train_errors.write_csv('./_rmse_train_errors.csv')
+        self.mae_train_errors.write_csv('./_mae_train_errors.csv')
 
     def predict_rating(self, user_id, item_id):
         return round(self.global_mean + self.users_bias[user_id - 1] + self.items_bias[item_id - 1] + np.dot(self.P_matrix[user_id - 1], self.Q_matrix[item_id - 1]), 2)
@@ -70,6 +83,7 @@ class FunkSVD:
     def evaluate(self, X_user_item, y_rating):
         rating_n_rows = X_user_item.shape[0]
         sq_error = 0
+        mae_error = 0
 
         for row_index in range(rating_n_rows):
             user_id = X_user_item[row_index].rows()[0][0]
@@ -79,7 +93,10 @@ class FunkSVD:
 
             error_ui = real_rating - predicted_rating
             sq_error = sq_error + error_ui ** 2
+            mae_error = mae_error + abs(error_ui)
+
         self.rmse_test_error = round(math.sqrt(sq_error / rating_n_rows), 2)
+        self.mae_test_error = round(mae_error / rating_n_rows)
 
 
 if __name__ == '__main__':
@@ -87,11 +104,10 @@ if __name__ == '__main__':
     df_ratings = pl.read_csv('./ratings.csv')
     df_ratings = df_ratings.drop('timestamp')
     df_ratings = df_ratings.sort('userId')
-    # df_ratings = df_ratings[:100]  # TODO: REMOVER!
 
     X = df_ratings.select(['userId', 'movieId'])
     y = df_ratings.select('rating')
-    X_train, X_test, y_train, y_test = train_test_split(X, y)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
 
     model = FunkSVD()
 
@@ -108,3 +124,4 @@ if __name__ == '__main__':
     end_evaluation = time.time()
 
     print(model.rmse_test_error)
+    print(model.mae_test_error)
