@@ -3,6 +3,7 @@ import time
 
 import numpy as np
 import polars as pl
+from numpy.ma.core import round_
 from sklearn.model_selection import train_test_split
 
 
@@ -57,7 +58,7 @@ class FunkSVD:
                     temp_uf = self.P_matrix[user, factor]
                     self.P_matrix[user, factor] = self.P_matrix[user, factor] + self.learning_rate * (error_ui * self.Q_matrix[item, factor] - self.regulation * self.P_matrix[user, factor])
                     self.Q_matrix[item, factor] = self.Q_matrix[item, factor] + self.learning_rate * (error_ui * temp_uf - self.regulation * self.Q_matrix[item, factor])
-            _rmse_train_errors[n_iteration] = math.sqrt(sq_error / rating_n_rows)  # RMSE
+            _rmse_train_errors[n_iteration] = round_(math.sqrt(sq_error / rating_n_rows), 2)  # RMSE
             print(f'TRAINING - RMSE: {math.sqrt(sq_error / rating_n_rows)}')
 
         self.rmse_train_errors = pl.DataFrame(np.array([_rmse_train_errors, list(range(1, self.iterations + 1))]), schema=[("error", pl.Float64), ("iteration", pl.Int64)], orient="col")
@@ -78,7 +79,7 @@ class FunkSVD:
 
             error_ui = real_rating - predicted_rating
             sq_error = sq_error + error_ui ** 2
-        self.rmse_test_error = math.sqrt(sq_error / rating_n_rows)
+        self.rmse_test_error = round(math.sqrt(sq_error / rating_n_rows), 2)
 
 
 if __name__ == '__main__':
