@@ -6,22 +6,6 @@ import polars as pl
 from sklearn.model_selection import train_test_split
 
 
-class FunkSVDModelResult:
-    def __init__(self, global_mean, users_bias, items_bias, P_matrix, Q_matrix, errors, iterations):
-        self.global_mean = global_mean
-        self.users_bias = users_bias
-        self.items_bias = items_bias
-        self.P_matrix = P_matrix
-        self.Q_matrix = Q_matrix
-        errors_array = np.array([errors, list(range(1, iterations + 1))])
-        self.rmse_train_errors = pl.DataFrame(errors_array, schema=[("error", pl.Float64), ("iteration", pl.Int64)], orient="col")
-        self.test_errors = []
-        self.iterations = 10
-
-    def predict_rating(self, user_id, item_id):
-        return round(self.global_mean + self.users_bias[user_id] + self.items_bias[item_id] + np.dot(self.P_matrix[user_id], self.Q_matrix[item_id]), 2)
-
-
 class FunkSVD:
     def __init__(self, k=40, learning_rate=0.001, regulation=0.02, iterations=10):
         self.k = k
@@ -54,6 +38,7 @@ class FunkSVD:
         _rmse_train_errors = np.zeros(shape=self.iterations)
 
         for n_iteration in range(self.iterations):
+            print(f'TRAINING - ITERAÇÃO: {n_iteration}')
             sq_error = 0
             for r_matrix_row in range(rating_n_rows):
 
@@ -73,6 +58,7 @@ class FunkSVD:
                     self.P_matrix[user, factor] = self.P_matrix[user, factor] + self.learning_rate * (error_ui * self.Q_matrix[item, factor] - self.regulation * self.P_matrix[user, factor])
                     self.Q_matrix[item, factor] = self.Q_matrix[item, factor] + self.learning_rate * (error_ui * temp_uf - self.regulation * self.Q_matrix[item, factor])
             _rmse_train_errors[n_iteration] = math.sqrt(sq_error / rating_n_rows)  # RMSE
+            print(f'TRAINING - RMSE: {math.sqrt(sq_error / rating_n_rows)}')
 
         self.rmse_train_errors = pl.DataFrame(np.array([_rmse_train_errors, list(range(1, self.iterations + 1))]), schema=[("error", pl.Float64), ("iteration", pl.Int64)], orient="col")
         self.rmse_train_errors.write_csv('./_rmse_train_errors.csv')
